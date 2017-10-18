@@ -1,0 +1,1053 @@
+'This block enables the 'sleep' command
+#If VBA7 Then
+    Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal ms As LongPtr)
+#Else
+    Private Declare Sub Sleep Lib "kernel32" (ByVal ms As Long)
+#End If
+
+'declaring variables...
+Dim myposCOL As Integer
+Dim myposROW As Integer
+Dim backgroundColorIndex As Integer
+Dim characterColorIndex As Integer
+Dim laddercolorindex As Integer
+Dim GravityTimerInterval As Integer
+Dim jumpheight As Integer
+Dim scorePositionCOL As Integer
+Dim scorePositionROW As Integer
+Dim PortalBlueRow As Integer
+Dim PortalBlueCol As Integer
+Dim PortalBluePreviousBlockType As String
+Dim portalBlueDirection As String
+Dim PortalOrangeRow As Integer
+Dim PortalOrangeCol As Integer
+Dim PortalOrangePreviousBlockType As String
+Dim PortalOrangeDirection As String
+Dim CurrentPortalNr As Integer
+Dim PortalMaximumTravelDistance As Integer
+Dim fallDistance As Integer
+Dim forceFieldColorIndex As Integer
+Dim mycharacterText As String
+Dim holdingCube As Boolean
+Dim inventorycellRow As Integer
+Dim inventorycellCol As Integer
+
+
+Function startup(level As String)
+
+Dim theLevel As String
+theLevel = level
+
+'paint the level
+paintLevel (theLevel)
+
+
+
+'set starting point
+myposCOL = 4
+myposROW = 30
+
+'set backgroundColor
+backgroundColorIndex = 2
+
+'set ladder color index
+laddercolorindex = 12
+
+'set jump height
+jumpheight = 4
+
+'reset score
+scorePositionCOL = 4
+scorePositionROW = 3
+Cells(scorePositionROW, scorePositionCOL).Value = 0
+
+'render my character
+On Error Resume Next
+Cells(myposROW, myposCOL).Interior.ColorIndex = characterColorIndex
+
+'start gravity
+GravityTimerInterval = 40
+timerGravity
+
+'initiate portal locations
+PortalBlueRow = 0
+PortalBlueCol = 0
+PortalOrangeRow = 0
+PortalOrangeCol = 0
+PortalBluePreviousBlockType = ""
+PortalOrangePreviousBlockType = ""
+CurrentPortalNr = 2 'this means the first portal shot will be blue, change to 1 for an orange portal as it will alternate between 1 and 2
+PortalMaximumTravelDistance = 15
+
+'setup fall distance
+fallDistance = 0
+
+'set forcefield color
+forceFieldColorIndex = 23
+
+'set text for mycharacter
+'mycharacterText = Cells(1048576, 1).Value 'better not remove this cell..
+mycharacterText = ActiveWorkbook.Worksheets.Item("settings").Cells(1, 2).Value
+'set character color
+characterColorIndex = backgroundColorIndex
+
+drawCharacter
+
+'empty hands
+holdingCube = False
+
+'set position of the inventory indicator
+inventorycellRow = 3
+inventorycellCol = 12
+
+End Function
+
+Function paintLevel(level As String)
+On Error GoTo errortrap
+Dim mainworkBook As Workbook
+Set mainworkBook = ActiveWorkbook
+'Select Case level
+    'Case "level1"
+        mainworkBook.Sheets(level & "_source").UsedRange.Copy
+        mainworkBook.Sheets("playfield").Select
+        mainworkBook.Sheets("playfield").Range("A1").Select
+        mainworkBook.Sheets("playfield").Paste
+        mainworkBook.Sheets("playfield").Cells(1, 1).Select
+'End Select
+Exit Function
+errortrap:
+MsgBox ("err:" & ex.Message)
+End Function
+
+Function timerGravity()
+'check if cell is free
+If Cells((myposROW + 1), myposCOL).Interior.ColorIndex = backgroundColorIndex And Cells((myposROW + 1), myposCOL).Interior.Pattern <> xlPatternDown And Cells((myposROW + 1), myposCOL).Interior.PatternColorIndex <> laddercolorindex Or Cells((myposROW + 1), myposCOL).Interior.Pattern = xlPatternLinearGradient Then
+    'pick up a cube on the way?
+    If Cells((myposROW + 1), myposCOL).Value = ChrW(9632) Then
+        If holdingCube = True Then
+            fallDistance = 0
+            Exit Function
+        End If
+    End If
+    
+    'draw character
+    removeCurrentCharacter
+    myposROW = myposROW + 1
+    fallDistance = fallDistance + 1
+    drawCharacter
+    
+Else
+    'nothing
+    fallDistance = 0
+End If
+Exit Function
+End Function
+
+Function Jump()
+Dim counter As Integer
+counter = 0
+If fallDistance = 0 Then
+    For i = 0 To jumpheight
+        If Cells((myposROW - i), myposCOL).Interior.ColorIndex = backgroundColorIndex Then
+            counter = counter + 1
+        Else
+            'hit!
+            counter = counter - 1
+            GoTo endloop
+        End If
+    Next
+endloop:
+    removeCurrentCharacter
+    myposROW = myposROW - counter
+    fallDistance = 0
+    drawCharacter
+End If
+End Function
+Function up()
+If myposROW > 4 Then
+    If Cells(myposROW - 1, myposCOL).Value = ChrW(9632) Or Cells(myposROW - 1, myposCOL).Interior.Pattern = xlPatternDown Or Cells(myposROW - 1, myposCOL).Interior.ColorIndex <> backgroundColorIndex Then
+        'collision
+        Exit Function
+    End If
+    removeCurrentCharacter
+    myposROW = myposROW - 1
+    fallDistance = 0
+    drawCharacter
+    
+End If
+End Function
+Function Left()
+If myposCOL > 1 Then
+    If Cells(myposROW, (myposCOL - 1)).Interior.ColorIndex = backgroundColorIndex Then
+        If Cells(myposROW, myposCOL - 1).Value = ChrW(9632) And holdingCube = True Then
+            'collision, use stairs
+            'can we use stairs?
+            If Cells((myposROW - 1), (myposCOL - 1)).Interior.ColorIndex = backgroundColorIndex Then
+                removeCurrentCharacter
+                myposCOL = myposCOL - 1
+                myposROW = myposROW - 1
+                fallDistance = 0
+                drawCharacter
+            Else
+                'not possible to go around
+            End If
+            Exit Function
+        End If
+        If Cells(myposROW, myposCOL - 1).Interior.Pattern = xlPatternDown Then
+            'you can't move here
+            Exit Function
+        End If
+        
+        removeCurrentCharacter
+        myposCOL = myposCOL - 1
+        fallDistance = 0
+        drawCharacter
+        
+    Else
+        If Cells((myposROW - 1), (myposCOL - 1)).Interior.ColorIndex = backgroundColorIndex Then
+        'is it a portal?
+        If Cells(myposROW, (myposCOL - 1)).Interior.Pattern = xlPatternLinearGradient Then
+            'are both portals drawn?
+            If PortalBlueRow = 0 Or PortalOrangeRow = 0 Then
+                'no portals to go trough
+                Exit Function
+            Else
+                'yes, keep moving
+                removeCurrentCharacter
+                myposCOL = myposCOL - 1
+                fallDistance = 0
+                drawCharacter
+            End If
+            
+        Else
+            'no, stairs
+            removeCurrentCharacter
+            myposCOL = myposCOL - 1
+            myposROW = myposROW - 1
+            fallDistance = 0
+            drawCharacter
+            
+        End If
+        Else
+            'hit!
+        End If
+    End If
+End If
+End Function
+Function Right()
+If Cells(myposROW, (myposCOL + 1)).Interior.ColorIndex = backgroundColorIndex Then
+    'check collision with other cubes or doors
+    If Cells(myposROW, myposCOL + 1).Value = ChrW(9632) And holdingCube = True Then
+        'collision, use stairs
+        'can we use stairs?
+        If Cells((myposROW - 1), (myposCOL + 1)).Interior.ColorIndex = backgroundColorIndex Then
+            removeCurrentCharacter
+            myposCOL = myposCOL + 1
+            myposROW = myposROW - 1
+            fallDistance = 0
+            drawCharacter
+        Else
+            'not possible to go around
+        End If
+        Exit Function
+    End If
+    If Cells(myposROW, myposCOL + 1).Interior.Pattern = xlPatternDown Then
+        'you can't move here
+        Exit Function
+    End If
+    removeCurrentCharacter
+    myposCOL = myposCOL + 1
+    fallDistance = 0
+    drawCharacter
+    
+Else
+    If Cells((myposROW - 1), (myposCOL + 1)).Interior.ColorIndex = backgroundColorIndex Then
+        'is it a portal?
+        If Cells(myposROW, (myposCOL + 1)).Interior.Pattern = xlPatternLinearGradient Then
+            'are both portals drawn?
+            If PortalBlueRow = 0 Or PortalOrangeRow = 0 Then
+                'no portals to go trough
+                Exit Function
+            Else
+                'yes, keep moving
+                removeCurrentCharacter
+                myposCOL = myposCOL + 1
+                fallDistance = 0
+                drawCharacter
+            End If
+
+            
+        Else
+            'no, stairs
+            removeCurrentCharacter
+            myposCOL = myposCOL + 1
+            myposROW = myposROW - 1
+            fallDistance = 0
+            drawCharacter
+            
+        End If
+    Else
+        'hit!
+    End If
+End If
+End Function
+Function Down()
+If myposROW < 37 Then
+    If Cells((myposROW + 1), myposCOL).Interior.PatternColorIndex = laddercolorindex Then
+        removeCurrentCharacter
+        myposROW = myposROW + 1
+        fallDistance = 0
+        drawCharacter
+        
+    End If
+End If
+End Function
+Function dropCube()
+    If Cells(myposROW + 1, myposCOL).Value = "" And holdingCube = True Then
+        'check for door button
+        If Cells((myposROW + 1), myposCOL).Interior.Pattern = xlPatternUp Then
+            If holdingCube = True And Cells((myposROW + 1), myposCOL).Value <> ChrW(9632) Then
+                'yes, button, drop cube
+                Cells(myposROW + 1, myposCOL).Value = ChrW(9632)
+                Cells(inventorycellRow, inventorycellCol).Value = ""
+                holdingCube = False
+                'now find the door and mark the path
+                thisrow = myposROW + 1
+                thiscol = myposCOL
+                counter = 0
+                Do Until counter >= 100
+                    If Cells(thisrow, thiscol).Interior.Pattern = xlPatternGray25 And Cells(thisrow, thiscol).Interior.PatternColorIndex <> 10 Then
+                        Cells(thisrow, thiscol).Interior.PatternColorIndex = 10 'green
+                    End If
+                    'find adjacent block
+                    'down?
+                    If Cells(thisrow + 1, thiscol).Interior.Pattern = xlPatternGray25 And Cells(thisrow + 1, thiscol).Interior.PatternColorIndex <> 10 Then
+                        thisrow = thisrow + 1
+                        GoTo moveNext
+                    End If
+                    'up?
+                    If Cells(thisrow - 1, thiscol).Interior.Pattern = xlPatternGray25 And Cells(thisrow - 1, thiscol).Interior.PatternColorIndex <> 10 Then
+                        thisrow = thisrow - 1
+                        GoTo moveNext
+                    End If
+                    'left?
+                    If Cells(thisrow, thiscol - 1).Interior.Pattern = xlPatternGray25 And Cells(thisrow, thiscol - 1).Interior.PatternColorIndex <> 10 Then
+                        thiscol = thiscol - 1
+                        GoTo moveNext
+                    End If
+                    'right?
+                    If Cells(thisrow, thiscol + 1).Interior.Pattern = xlPatternGray25 And Cells(thisrow, thiscol + 1).Interior.PatternColorIndex <> 10 Then
+                        thiscol = thiscol + 1
+                        GoTo moveNext
+                    End If
+moveNext:
+                    counter = counter + 1
+                Loop
+                'locate target block
+                If (Cells(thisrow - 1, thiscol).Interior.Pattern = xlPatternDown) Then
+                    thisrow = thisrow - 1
+                End If
+                If (Cells(thisrow + 1, thiscol).Interior.Pattern = xlPatternDown) Then
+                    thisrow = thisrow + 1
+                End If
+                If (Cells(thisrow, thiscol + 1).Interior.Pattern = xlPatternDown) Then
+                    thiscol = thiscol + 1
+                End If
+                If (Cells(thisrow, thiscol - 1).Interior.Pattern = xlPatternDown) Then
+                    thiscol = thiscol - 1
+                End If
+                'open door
+                Cells(thisrow, thiscol).Interior.Pattern = xlPatternVertical 'xlNone
+                Exit Function
+            End If
+        Else
+            'no door, drop the cube anyway
+            'can we drop the cube left?
+            If Cells(myposROW, myposCOL - 1).Value = "" Then
+                Cells(myposROW, myposCOL - 1).Value = ChrW(9632)
+                Cells(inventorycellRow, inventorycellCol).Value = ""
+                holdingCube = False
+                Exit Function
+            End If
+            'can we drop the cube right?
+            If Cells(myposROW, myposCOL + 1).Value = "" Then
+                Cells(myposROW, myposCOL + 1).Value = ChrW(9632)
+                Cells(inventorycellRow, inventorycellCol).Value = ""
+                holdingCube = False
+                Exit Function
+            End If
+        End If
+    Else
+            If holdingCube = False And Cells((myposROW + 1), myposCOL).Value = ChrW(9632) Then
+                'yes, button, pickup cube
+                Cells(myposROW + 1, myposCOL).Value = ""
+                Cells(inventorycellRow, inventorycellCol).Value = ChrW(9632)
+                holdingCube = True
+                'now find the door and mark the path
+                thisrow = myposROW + 1
+                thiscol = myposCOL
+                counter = 0
+                Do Until counter >= 100
+                    If Cells(thisrow, thiscol).Interior.Pattern = xlPatternGray25 And Cells(thisrow, thiscol).Interior.PatternColorIndex <> 3 Then
+                        Cells(thisrow, thiscol).Interior.PatternColorIndex = 3 'red
+                    End If
+                    'find adjacent block
+                    'down?
+                    If Cells(thisrow + 1, thiscol).Interior.Pattern = xlPatternGray25 And Cells(thisrow + 1, thiscol).Interior.PatternColorIndex <> 3 Then
+                        thisrow = thisrow + 1
+                        GoTo moveNext2
+                    End If
+                    'up?
+                    If Cells(thisrow - 1, thiscol).Interior.Pattern = xlPatternGray25 And Cells(thisrow - 1, thiscol).Interior.PatternColorIndex <> 3 Then
+                        thisrow = thisrow - 1
+                        GoTo moveNext2
+                    End If
+                    'left?
+                    If Cells(thisrow, thiscol - 1).Interior.Pattern = xlPatternGray25 And Cells(thisrow, thiscol - 1).Interior.PatternColorIndex <> 3 Then
+                        thiscol = thiscol - 1
+                        GoTo moveNext2
+                    End If
+                    'right?
+                    If Cells(thisrow, thiscol + 1).Interior.Pattern = xlPatternGray25 And Cells(thisrow, thiscol + 1).Interior.PatternColorIndex <> 3 Then
+                        thiscol = thiscol + 1
+                        GoTo moveNext2
+                    End If
+moveNext2:
+                    counter = counter + 1
+                Loop
+                'locate target block
+                If (Cells(thisrow - 1, thiscol).Interior.Pattern = xlPatternVertical) Then
+                    thisrow = thisrow - 1
+                End If
+                If (Cells(thisrow + 1, thiscol).Interior.Pattern = xlPatternVertical) Then
+                    thisrow = thisrow + 1
+                End If
+                If (Cells(thisrow, thiscol + 1).Interior.Pattern = xlPatternVertical) Then
+                    thiscol = thiscol + 1
+                End If
+                If (Cells(thisrow, thiscol - 1).Interior.Pattern = xlPatternVertical) Then
+                    thiscol = thiscol - 1
+                End If
+                'close door
+                Cells(thisrow, thiscol).Interior.Pattern = xlPatternDown 'xlNone
+                Exit Function
+            End If
+        End If
+End Function
+
+Function drawCharacter()
+    'check for end of level
+    If Cells(myposROW, myposCOL).Value = ActiveWorkbook.Worksheets.Item("settings").Cells(2, 2).Value Then 'end of level
+        MsgBox "Congratulations, you've reached the end of this level!", vbInformation, "Level end"
+        ActiveWorkbook.Sheets("intro").Select
+        End
+    End If
+    
+    'heart?
+    If Cells(myposROW, myposCOL).Value = ChrW(9829) Then 'if value = heart symbol (ALT+3), score goes up
+        Cells(myposROW, myposCOL).Value = ""
+        Cells(scorePositionROW, scorePositionCOL).Value = Cells(scorePositionROW, scorePositionCOL).Value + 1
+    End If
+    'check if user passed a forcefield (= portals and holding cube gone)
+    If Cells(myposROW, myposCOL).Interior.PatternColorIndex = forceFieldColorIndex Then
+        removePortals
+        holdingCube = False
+        Cells(inventorycellRow, inventorycellCol).Value = ""
+    End If
+    'check for cube to pick up
+    If Cells(myposROW, myposCOL).Value = ChrW(9632) Then
+        If holdingCube = True Then
+            'we can't move
+            Exit Function
+        Else
+            holdingCube = True
+            Cells(inventorycellRow, inventorycellCol).Value = ChrW(9632)
+        End If
+    End If
+    'is the cell free?
+    'is the cell colored different or is a portal? then stop whatever you're doing
+    If Cells(myposROW, myposCOL).Interior.ColorIndex <> backgroundColorIndex And Cells(myposROW, myposCOL).Interior.Pattern <> xlPatternLinearGradient Then
+       'this cell isn't free
+        Exit Function
+    End If
+    
+                   
+    
+    checkPortalCollision
+    'Cells(myposROW, myposCOL).Interior.ColorIndex = characterColorIndex
+    Cells(myposROW, myposCOL).Value = mycharacterText
+    'focus the character cell column so it is allways in focus
+    Cells(1, myposCOL).Select
+    
+    
+    
+    Sleep (GravityTimerInterval)
+    DoEvents
+    Application.OnTime (Now), "!playfield.timerGravity"
+End Function
+Function removeCurrentCharacter()
+'Cells(myposROW, myposCOL).Interior.ColorIndex = backgroundColorIndex
+Cells(myposROW, myposCOL).Value = ""
+End Function
+Function removePortals()
+If PortalBlueRow > 0 Then
+    Select Case PortalBluePreviousBlockType
+        Case "ladder"
+            Cells(PortalBlueRow, PortalBlueCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalBlueRow, PortalBlueCol).Interior.PatternColorIndex = laddercolorindex
+            Cells(PortalBlueRow, PortalBlueCol).Interior.Pattern = xlPatternLightHorizontal
+        Case Else
+            Cells(PortalBlueRow, PortalBlueCol).Interior.Pattern = xlPatternNone
+            Cells(PortalBlueRow, PortalBlueCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalBlueRow, PortalBlueCol).Interior.PatternColorIndex = backgroundColorIndex
+    End Select
+End If
+If PortalOrangeRow > 0 Then
+    Select Case PortalOrangePreviousBlockType
+        Case "ladder"
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.PatternColorIndex = laddercolorindex
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.Pattern = xlPatternLightHorizontal
+        Case Else
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.Pattern = xlPatternNone
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.PatternColorIndex = backgroundColorIndex
+    End Select
+'reset positions to 0
+PortalBlueRow = 0
+PortalBlueCol = 0
+PortalOrangeRow = 0
+PortalOrangeCol = 0
+End If
+    
+End Function
+
+Function removeCube()
+    holdingCube = False
+    Cells(inventorycellRow, inventorycellCol).Value = ""
+End Function
+Function checkPortalCollision()
+    'am I on a portal?
+    If myposROW = PortalBlueRow And myposCOL = PortalBlueCol Then
+        'yes, the blue one, portal me to the orange one
+        Select Case PortalOrangeDirection
+        Case "up"
+            myposROW = PortalOrangeRow + 1
+            myposCOL = PortalOrangeCol
+        Case "down"
+            If fallDistance > 0 Then
+                'calculate momentum
+                'check for collision
+                i = 1
+                cellstomove = 0
+                For i = 1 To fallDistance
+                    If Cells((PortalOrangeRow - i), PortalOrangeCol).Interior.ColorIndex <> backgroundColorIndex Then
+                        'blocked
+                        i = fallDistance
+                    Else
+                        'not blocked, you can move up
+                        cellstomove = cellstomove + 1
+                    End If
+                Next
+                'move character
+                '''''''''''''''''''''''''''''
+                myposCOL = PortalOrangeCol
+                myposROW = (PortalOrangeRow - 1)
+                
+                For i = 0 To (cellstomove - 2)
+                    'is the cell free?
+                    'is the cell colored different or is a portal? then stop whatever you're doing
+                    If Cells((myposROW - 1), myposCOL).Interior.ColorIndex <> backgroundColorIndex And Cells((myposROW - 1), myposCOL).Interior.Pattern <> xlPatternLinearGradient Then
+                        'this cell isn't free
+                        Exit Function
+                    End If
+
+                    removeCurrentCharacter
+                    myposROW = myposROW - 1
+                    drawCharacter
+                    
+                    Sleep (10)
+                Next
+                fallDistance = 0
+                '''''''''''''''''''''''''''''
+            Else
+                myposROW = (PortalOrangeRow - 1)
+                myposCOL = PortalOrangeCol
+            End If
+        Case "left"
+            If fallDistance > 0 Then
+                'calculate momentum
+                'check for collision
+                i = 1
+                cellstomove = 0
+                For i = 1 To fallDistance
+                    If Cells(PortalOrangeRow, (PortalOrangeCol + i)).Interior.ColorIndex <> backgroundColorIndex Then
+                        'blocked
+                        i = fallDistance
+                    Else
+                        'not blocked, you can move up
+                        cellstomove = cellstomove + 1
+                    End If
+                Next
+                'move character
+                '''''''''''''''''''''''''''''
+                myposCOL = (PortalOrangeCol + 1)
+                myposROW = PortalOrangeRow
+                
+                For i = 0 To (cellstomove - 2)
+                    'is the cell free?
+                    'is the cell colored different or is a portal? then stop whatever you're doing
+                    If Cells(myposROW, (myposCOL + 1)).Interior.ColorIndex <> backgroundColorIndex And Cells(myposROW, (myposCOL + 1)).Interior.Pattern <> xlPatternLinearGradient Then
+                        'this cell isn't free
+                        Exit Function
+                    End If
+                    removeCurrentCharacter
+                    myposCOL = myposCOL + 1
+                    drawCharacter
+                    Sleep (10)
+                Next
+                fallDistance = 0
+                '''''''''''''''''''''''''''''
+            Else
+                myposCOL = (PortalOrangeCol + 1)
+                myposROW = PortalOrangeRow
+            End If
+        Case "right"
+            If fallDistance > 0 Then
+                'calculate momentum
+                'check for collision
+                i = 1
+                cellstomove = 0
+                For i = 1 To fallDistance
+                    If Cells(PortalOrangeRow, (PortalOrangeCol - i)).Interior.ColorIndex <> backgroundColorIndex Then
+                        'blocked
+                        i = fallDistance
+                    Else
+                        'not blocked, you can move up
+                        cellstomove = cellstomove + 1
+                    End If
+                Next
+                'move character
+                '''''''''''''''''''''''''''''
+                myposCOL = (PortalOrangeCol - 1)
+                myposROW = PortalOrangeRow
+                
+                For i = 0 To (cellstomove - 2)
+                    'is the cell free?
+                    'is the cell colored different or is a portal? then stop whatever you're doing
+                    If Cells(myposROW, (myposCOL - 1)).Interior.ColorIndex <> backgroundColorIndex And Cells(myposROW, (myposCOL - 1)).Interior.Pattern <> xlPatternLinearGradient Then
+                        'this cell isn't free
+                        Exit Function
+                    End If
+                    removeCurrentCharacter
+                    myposCOL = myposCOL - 1
+                    drawCharacter
+                    Sleep (10)
+                Next
+                fallDistance = 0
+                '''''''''''''''''''''''''''''
+            Else
+                myposCOL = (PortalOrangeCol - 1)
+                myposROW = PortalOrangeRow
+            End If
+        End Select
+    Else
+        If myposROW = PortalOrangeRow And myposCOL = PortalOrangeCol Then
+        'yes, the orange one, portal me to the blue one
+            Select Case portalBlueDirection
+                Case "up"
+                    myposROW = PortalBlueRow + 1
+                    myposCOL = PortalBlueCol
+                Case "down"
+                If fallDistance > 0 Then
+                    'calculate momentum
+                    'check for collision
+                    i = 1
+                    cellstomove = 0
+                    For i = 1 To fallDistance
+                        If Cells((PortalBlueRow - i), PortalBlueCol).Interior.ColorIndex <> backgroundColorIndex Then
+                            'blocked
+                            i = fallDistance
+                        Else
+                            'not blocked, you can move up
+                            cellstomove = cellstomove + 1
+                        End If
+                    Next
+                    'move character
+                    '''''''''''''''''''''''''''''
+                    myposCOL = PortalBlueCol
+                    myposROW = (PortalBlueRow - 1)
+                    
+                    For i = 0 To (cellstomove - 2)
+                    'is the cell free?
+                    'is the cell colored different or is a portal? then stop whatever you're doing
+                    If Cells((myposROW - 1), myposCOL).Interior.ColorIndex <> backgroundColorIndex And Cells((myposROW - 1), myposCOL).Interior.Pattern <> xlPatternLinearGradient Then
+                        'this cell isn't free
+                        Exit Function
+                    End If
+                        removeCurrentCharacter
+                        myposROW = myposROW - 1
+                        drawCharacter
+                        Sleep (10)
+                    Next
+                    fallDistance = 0
+                    '''''''''''''''''''''''''''''
+                Else
+                    myposROW = (PortalBlueRow - 1)
+                    myposCOL = PortalBlueCol
+                End If
+            Case "left"
+                If fallDistance > 0 Then
+                    'calculate momentum
+                    'check for collision
+                    i = 1
+                    cellstomove = 0
+                    For i = 1 To fallDistance
+                        If Cells(PortalBlueRow, (PortalBlueCol + i)).Interior.ColorIndex <> backgroundColorIndex Then
+                            'blocked
+                            i = fallDistance
+                        Else
+                            'not blocked, you can move up
+                            cellstomove = cellstomove + 1
+                        End If
+                    Next
+                    'move character
+                    '''''''''''''''''''''''''''''
+                    myposCOL = (PortalBlueCol + 1)
+                    myposROW = PortalBlueRow
+                    
+                    For i = 0 To (cellstomove - 2)
+                    'is the cell free?
+                    'is the cell colored different or is a portal? then stop whatever you're doing
+                    If Cells(myposROW, (myposCOL + 1)).Interior.ColorIndex <> backgroundColorIndex And Cells(myposROW, (myposCOL + 1)).Interior.Pattern <> xlPatternLinearGradient Then
+                        'this cell isn't free
+                        Exit Function
+                    End If
+                        removeCurrentCharacter
+                        myposCOL = myposCOL + 1
+                        drawCharacter
+                        Sleep (10)
+                    Next
+                    fallDistance = 0
+                    '''''''''''''''''''''''''''''
+                Else
+                    myposCOL = (PortalBlueCol + 1)
+                    myposROW = PortalBlueRow
+                End If
+            Case "right"
+                If fallDistance > 0 Then
+                    'calculate momentum
+                    'check for collision
+                    i = 1
+                    cellstomove = 0
+                    For i = 1 To fallDistance
+                        If Cells(PortalBlueRow, (PortalBlueCol - i)).Interior.ColorIndex <> backgroundColorIndex Then
+                            'blocked
+                            i = fallDistance
+                        Else
+                            'not blocked, you can move up
+                            cellstomove = cellstomove + 1
+                        End If
+                    Next
+                    'move character
+                    '''''''''''''''''''''''''''''
+                    myposCOL = (PortalBlueCol - 1)
+                    myposROW = PortalBlueRow
+                    
+                    For i = 0 To (cellstomove - 2)
+                    'is the cell free?
+                    'is the cell colored different or is a portal? then stop whatever you're doing
+                    If Cells(myposROW, (myposCOL - 1)).Interior.ColorIndex <> backgroundColorIndex And Cells(myposROW, (myposCOL - 1)).Interior.Pattern <> xlPatternLinearGradient Then
+                        'this cell isn't free
+                        Exit Function
+                    End If
+                        removeCurrentCharacter
+                        myposCOL = myposCOL - 1
+                        drawCharacter
+                        Sleep (10)
+                    Next
+                    fallDistance = 0
+                    '''''''''''''''''''''''''''''
+                Else
+                    myposCOL = (PortalBlueCol - 1)
+                    myposROW = PortalBlueRow
+                End If
+            End Select
+        End If
+    End If
+End Function
+Function ShootPortal(direction As String)
+Dim PortalColor As Integer
+Dim counter As Integer
+
+'set this portal's color
+If CurrentPortalNr = 1 Then
+    PortalColor = 2 'shoot orange now
+    CurrentPortalNr = 2
+Else
+    PortalColor = 1 'shoot blue now
+    CurrentPortalNr = 1
+End If
+    
+'determine position of the portal
+Dim NewPortalrow As Integer
+Dim NewPortalcol As Integer
+NewPortalCell = 0
+NewPortalcol = 0
+Select Case direction
+    Case "up"
+        'loop up until you find a block to hit
+        counter = 1
+        Do Until Cells((myposROW - counter), myposCOL).Interior.ColorIndex <> backgroundColorIndex Or Cells((myposROW - counter), myposCOL).Interior.Pattern = xlPatternDown Or counter > PortalMaximumTravelDistance
+            If Cells((myposROW - counter), myposCOL).Interior.PatternColorIndex = forceFieldColorIndex Then
+                'force field, you shall not pass!
+                Exit Function
+            Else
+                counter = counter + 1
+            End If
+        Loop
+        If counter >= PortalMaximumTravelDistance Then
+            'too far, reset and exit
+            If CurrentPortalNr = 2 Then CurrentPortalNr = 1
+            If CurrentPortalNr = 1 Then CurrentPortalNr = 2
+            Exit Function
+        End If
+        'block portal stacking
+        If (myposROW - counter) = PortalBlueRow And myposCOL = PortalBlueCol Then
+            'reset portal color to orange
+            CurrentPortalNr = 1
+            Exit Function
+        End If
+        If (myposROW - counter) = PortalOrangeRow And myposCOL = PortalOrangeCol Then
+            'reset portal color to blue
+            CurrentPortalNr = 2
+            Exit Function
+        End If
+        counter = counter - 1
+        NewPortalrow = (myposROW - counter)
+        NewPortalcol = myposCOL
+
+    Case "down"
+        'loop up until you find a block to hit
+        counter = 1
+        Do Until Cells((myposROW + counter), myposCOL).Interior.ColorIndex <> backgroundColorIndex Or Cells((myposROW + counter), myposCOL).Interior.Pattern = xlPatternDown Or counter > PortalMaximumTravelDistance
+            If Cells((myposROW + counter), myposCOL).Interior.PatternColorIndex = forceFieldColorIndex Then
+                'force field, you shall not pass!
+                Exit Function
+            Else
+                counter = counter + 1
+            End If
+        Loop
+        If counter >= PortalMaximumTravelDistance Then
+            'too far, reset and exit
+            If CurrentPortalNr = 2 Then CurrentPortalNr = 1
+            If CurrentPortalNr = 1 Then CurrentPortalNr = 2
+            Exit Function
+        End If
+        counter = counter - 1
+        'block portal stacking
+        If (myposROW + counter) = PortalBlueRow And myposCOL = PortalBlueCol Then
+            'reset portal color to orange
+            CurrentPortalNr = 1
+            Exit Function
+        End If
+        If (myposROW + counter) = PortalOrangeRow And myposCOL = PortalOrangeCol Then
+            'reset portal color to blue
+            CurrentPortalNr = 2
+            Exit Function
+        End If
+        
+        NewPortalrow = (myposROW + counter)
+        NewPortalcol = myposCOL
+    
+    Case "left"
+        'loop up until you find a block to hit
+        counter = 1
+        Do Until Cells(myposROW, (myposCOL - counter)).Interior.ColorIndex <> backgroundColorIndex Or Cells(myposROW, (myposCOL - counter)).Interior.Pattern = xlPatternDown Or counter > PortalMaximumTravelDistance Or (myposCOL - counter) = 0
+            If Cells(myposROW, (myposCOL - counter)).Interior.PatternColorIndex = forceFieldColorIndex Then
+                'force field, you shall not pass!
+                Exit Function
+            Else
+                counter = counter + 1
+            End If
+        Loop
+        If counter >= PortalMaximumTravelDistance Then
+            'too far, reset and exit
+            If CurrentPortalNr = 2 Then CurrentPortalNr = 1
+            If CurrentPortalNr = 1 Then CurrentPortalNr = 2
+            Exit Function
+        End If
+        'block portal stacking
+        If myposROW = PortalBlueRow And (myposCOL - counter) = PortalBlueCol Then
+            'reset portal color to orange
+            CurrentPortalNr = 1
+            Exit Function
+        End If
+        If myposROW = PortalOrangeRow And (myposCOL - counter) = PortalOrangeCol Then
+            'reset portal color to blue
+            CurrentPortalNr = 2
+            Exit Function
+        End If
+        counter = counter - 1
+        NewPortalrow = myposROW
+        NewPortalcol = (myposCOL - counter)
+        
+    Case "right"
+        'loop up until you find a block to hit
+        counter = 1
+        Do Until Cells(myposROW, (myposCOL + counter)).Interior.ColorIndex <> backgroundColorIndex Or Cells(myposROW, (myposCOL + counter)).Interior.Pattern = xlPatternDown Or counter > PortalMaximumTravelDistance
+            If Cells(myposROW, (myposCOL + counter)).Interior.PatternColorIndex = forceFieldColorIndex Then
+                'force field, you shall not pass!
+                Exit Function
+            Else
+                counter = counter + 1
+            End If
+        Loop
+        If counter >= PortalMaximumTravelDistance Then
+            'too far, reset and exit
+            If CurrentPortalNr = 2 Then CurrentPortalNr = 1
+            If CurrentPortalNr = 1 Then CurrentPortalNr = 2
+            Exit Function
+        End If
+        'block portal stacking
+        If myposROW = PortalBlueRow And (myposCOL + counter) = PortalBlueCol Then
+            'reset portal color to orange
+            CurrentPortalNr = 1
+            Exit Function
+        End If
+        If myposROW = PortalOrangeRow And (myposCOL + counter) = PortalOrangeCol Then
+            'reset portal color to blue
+            CurrentPortalNr = 2
+            Exit Function
+        End If
+        counter = counter - 1
+        NewPortalrow = myposROW
+        NewPortalcol = (myposCOL + counter)
+End Select
+
+'remove previous portals?
+If PortalColor = 1 And PortalBlueRow > 0 Then
+    Select Case PortalBluePreviousBlockType
+        Case "ladder"
+            Cells(PortalBlueRow, PortalBlueCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalBlueRow, PortalBlueCol).Interior.PatternColorIndex = laddercolorindex
+            Cells(PortalBlueRow, PortalBlueCol).Interior.Pattern = xlPatternLightHorizontal
+        Case Else
+            Cells(PortalBlueRow, PortalBlueCol).Interior.Pattern = xlPatternNone
+            Cells(PortalBlueRow, PortalBlueCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalBlueRow, PortalBlueCol).Interior.PatternColorIndex = backgroundColorIndex
+    End Select
+End If
+If PortalColor = 2 And PortalOrangeRow > 0 Then
+    Select Case PortalOrangePreviousBlockType
+        Case "ladder"
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.PatternColorIndex = laddercolorindex
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.Pattern = xlPatternLightHorizontal
+        Case Else
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.Pattern = xlPatternNone
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.ColorIndex = backgroundColorIndex
+            Cells(PortalOrangeRow, PortalOrangeCol).Interior.PatternColorIndex = backgroundColorIndex
+    End Select
+End If
+
+If Cells(NewPortalrow, NewPortalcol).Interior.PatternColorIndex = laddercolorindex And Cells(NewPortalrow, NewPortalcol).Interior.Pattern = xlPatternLightHorizontal Then
+    If PortalColor = 1 Then
+        PortalBluePreviousBlockType = "ladder"
+    Else
+        PortalOrangePreviousBlockType = "ladder"
+    End If
+Else
+    If PortalColor = 1 Then
+        PortalBluePreviousBlockType = "nothing"
+    Else
+        PortalOrangePreviousBlockType = "nothing"
+    End If
+End If
+
+
+DrawPortal direction, NewPortalrow, NewPortalcol, PortalColor
+
+Exit Function
+
+End Function
+
+Function DrawPortal(direction As String, portrow As Integer, portcol As Integer, portcolor As Integer)
+
+If portcolor = 1 Then portalBlueDirection = direction
+If portcolor = 2 Then PortalOrangeDirection = direction
+
+Dim thisRange As Range
+Set thisRange = Cells(portrow, portcol)
+    With thisRange.Interior
+        .Pattern = xlPatternLinearGradient
+        Select Case direction
+            Case "up"
+                .Gradient.Degree = 270
+            Case "down"
+                .Gradient.Degree = 90
+            Case "left"
+                .Gradient.Degree = 180
+            Case "right"
+                .Gradient.Degree = 0
+        End Select
+        .Gradient.ColorStops.Clear
+    End With
+    With thisRange.Interior.Gradient.ColorStops.Add(0)
+        .color = RGB(255, 255, 255)
+        .TintAndShade = 0
+    End With
+    With thisRange.Interior.Gradient.ColorStops.Add(1)
+        '.Color = RGB(255, 255, 255) <- white
+        '.Color = RGB(0, 150, 255) <- blue
+        '.Color = RGB(250, 150, 0) <- orange
+        Select Case portcolor
+            Case 1 'blue
+                .color = RGB(0, 150, 255)
+                PortalBlueRow = portrow
+                PortalBlueCol = portcol
+            Case 2 'orange
+                .color = RGB(250, 150, 0)
+                PortalOrangeRow = portrow
+                PortalOrangeCol = portcol
+        End Select
+        .TintAndShade = 0
+    End With
+    
+    'is the portal in the position I am in now?
+    removeCurrentCharacter
+    checkPortalCollision
+    drawCharacter
+    
+End Function
+
+Sub playLevel1()
+ActiveWorkbook.Sheets("playfield").Select
+startup ("level1")
+inputTracker.Show
+End Sub
+Sub playLevel2()
+ActiveWorkbook.Sheets("playfield").Select
+startup ("level2")
+inputTracker.Show
+End Sub
+Sub playLevel3()
+ActiveWorkbook.Sheets("playfield").Select
+startup ("level3")
+inputTracker.Show
+End Sub
+Sub playLevel4()
+ActiveWorkbook.Sheets("playfield").Select
+startup ("level4")
+inputTracker.Show
+End Sub
+Sub playLevel5()
+ActiveWorkbook.Sheets("playfield").Select
+startup ("level5")
+inputTracker.Show
+End Sub
+Sub playCustomLevel()
+ActiveWorkbook.Sheets("playfield").Select
+startup ("customlevel")
+inputTracker.Show
+End Sub

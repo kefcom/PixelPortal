@@ -1,0 +1,79 @@
+Dim lastkeycode As Integer
+
+
+
+Private Sub UserForm_KeyUp(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)
+Select Case KeyCode
+    Case 38
+        'up
+            playfield.up
+    Case 90
+        'up Z
+            playfield.up
+    Case 87
+        'up W
+            playfield.up
+    Case 40
+        'down
+        playfield.Down
+    Case 83
+        'down S
+        playfield.Down
+        
+    Case 37
+        'left
+        playfield.Left
+    Case 81
+        'left Q
+        playfield.Left
+    Case 65
+        'left A
+        playfield.Left
+        
+    Case 39
+        'right
+        playfield.Right
+    Case 68
+        'right D
+        playfield.Right
+        
+    Case 32
+        'space
+        If lastkeycode <> 32 Then
+            playfield.Jump
+        End If
+    Case 27
+        'escape,end
+        playfield.removeCurrentCharacter
+        playfield.removePortals
+        playfield.removeCube
+        intro.Select
+        End
+    Case 98
+        'num down
+        playfield.ShootPortal ("down")
+    Case 102
+        'num Right
+        playfield.ShootPortal ("right")
+    Case 104
+        'num up
+        playfield.ShootPortal ("up")
+    Case 100
+        'num left
+        playfield.ShootPortal ("left")
+        
+    Case 69
+        'e
+        playfield.dropCube
+End Select
+
+lastkeycode = KeyCode
+Exit Sub
+End Sub
+
+Private Sub UserForm_Click()
+
+End Sub
+
+Private Sub UserForm_Initialize()
+End Sub
